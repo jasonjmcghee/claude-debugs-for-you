@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { startSSEServer } from './mcp/KnownGoodServer.js';
+import { DebugServer, DebugStep } from './debug-server.js';
 
 // Keep track of server instances for cleanup
 let mcpServer: McpServer | undefined;
-let sseServer: { close: () => Promise<void> } | undefined;
+let debugServer: DebugServer | undefined;
 let statusBarItem: vscode.StatusBarItem;
 let copyButtonItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
@@ -38,73 +38,69 @@ export async function activate(context: vscode.ExtensionContext) {
         outputChannel.appendLine('\n--- Starting Server ---');
         
         try {
-            // Start SSE server
-            outputChannel.appendLine('Starting SSE server...');
-            sseServer = await startSSEServer({
-                port,
-                endpoint: '/sse',
-                createServer: async () => {
-                    const server = new McpServer({
-                        name: "Debug Server",
-                        version: "1.0.0"
-                    });
-
-                    // Set up MCP server handlers
-                    server.tool(
-                        "listFiles",
-                        { path: z.string().optional() },
-                        async ({ path }) => {
-                            // Handle list files request
-                            return {
-                                content: [{
-                                    type: "text",
-                                    text: JSON.stringify([])
-                                }]
-                            };
-                        }
-                    );
-
-                    server.tool(
-                        "getFile",
-                        { path: z.string() },
-                        async ({ path }) => {
-                            // Handle get file request
-                            return {
-                                content: [{
-                                    type: "text",
-                                    text: ""
-                                }]
-                            };
-                        }
-                    );
-
-                    server.tool(
-                        "debug",
-                        { 
-                            command: z.string(),
-                            args: z.array(z.string()).optional()
-                        },
-                        async ({ command, args }) => {
-                            // Handle debug command
-                            return {
-                                content: [{
-                                    type: "text",
-                                    text: "Success"
-                                }]
-                            };
-                        }
-                    );
-
-                    mcpServer = server;
-                    return server;
-                },
-                onConnect: (server) => {
-                    outputChannel.appendLine('Client connected to SSE server');
-                },
-                onClose: (server) => {
-                    outputChannel.appendLine('Client disconnected from SSE server');
-                }
+            // Create MCP server first
+            mcpServer = new McpServer({
+                name: "Debug Server",
+                version: "1.0.0"
             });
+
+            // Set up MCP server handlers
+            mcpServer.tool(
+                "listFiles",
+                {
+                    includePatterns: z.array(z.string()).optional(),
+                    excludePatterns: z.array(z.string()).optional()
+                },
+                async ({ includePatterns, excludePatterns }) => {
+                    const files = await debugServer!.handleListFiles({ includePatterns, excludePatterns });
+                    return {
+                        content: [{
+                            type: "text",
+                            text: JSON.stringify(files, null, 2)
+                        }]
+                    };
+                }
+            );
+
+            mcpServer.tool(
+                "getFile",
+                { path: z.string() },
+                async ({ path }) => {
+                    const content = await debugServer!.handleGetFile({ path });
+                    return {
+                        content: [{
+                            type: "text",
+                            text: content
+                        }]
+                    };
+                }
+            );
+
+            mcpServer.tool(
+                "debug",
+                { 
+                    steps: z.array(z.object({
+                        type: z.enum(["setBreakpoint", "removeBreakpoint", "continue", "evaluate", "launch"]),
+                        file: z.string(),
+                        line: z.number().optional(),
+                        expression: z.string().optional(),
+                        condition: z.string().optional()
+                    }))
+                },
+                async ({ steps }) => {
+                    const results = await debugServer!.handleDebug({ steps });
+                    return {
+                        content: [{
+                            type: "text",
+                            text: results.join('\n')
+                        }]
+                    };
+                }
+            );
+
+            // Create and start debug server with MCP server
+            debugServer = new DebugServer(port, mcpServer);
+            await debugServer.start();
             
             // Update status bar with SSE address
             statusBarItem.text = `$(debug) MCP Debug: http://localhost:${port}/sse`;
@@ -148,7 +144,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
             // Stop server
             outputChannel.appendLine('Stopping server...');
-            await sseServer?.close();
+            await debugServer?.stop();
             outputChannel.appendLine('Server stopped');
 
             // Wait a moment for ports to be released
@@ -183,7 +179,7 @@ export function deactivate() {
     copyButtonItem?.dispose();
 
     return Promise.all([
-        sseServer?.close()
+        debugServer?.stop()
     ]).catch(err => {
         outputChannel.appendLine(`Error during cleanup: ${err}`);
         console.error('Error during cleanup:', err);
