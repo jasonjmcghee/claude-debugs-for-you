@@ -1,5 +1,8 @@
-import * as net from 'net';
 import * as vscode from 'vscode';
+import * as http from 'http';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { z } from 'zod';
 
 export interface DebugCommand {
     command: 'listFiles' | 'getFileContent' | 'debug';
@@ -32,133 +35,193 @@ const getFileContentDescription = `Get file content with line numbers - you like
 to understand what files are available. Be careful to use absolute paths.`;
 
 export class DebugServer {
-    private server: net.Server | null = null;
+    private httpServer: http.Server | null = null;
     private port: number = 4711;
+    private activeTransports: Record<string, SSEServerTransport> = {};
+    private outputChannel: vscode.OutputChannel;
+    private mcpServer: McpServer | null = null;
 
-    constructor(port?: number) {
+    constructor(port?: number, mcpServer?: McpServer) {
         this.port = port || 4711;
+        this.mcpServer = mcpServer || null;
+        this.outputChannel = vscode.window.createOutputChannel("Debug Server");
+        this.outputChannel.show();
+        
+        if (mcpServer) {
+            this.setupMcpTools(mcpServer);
+        }
     }
 
-    private readonly tools = [
-        {
-            name: "listFiles",
-            description: listFilesDescription,
-            inputSchema: {
-                type: "object",
-                properties: {
-                    includePatterns: {
-                        type: "array",
-                        items: { type: "string" },
-                        description: "Glob patterns to include (e.g. ['**/*.js'])"
-                    },
-                    excludePatterns: {
-                        type: "array",
-                        items: { type: "string" },
-                        description: "Glob patterns to exclude (e.g. ['node_modules/**'])"
-                    }
-                }
+    private setupMcpTools(mcpServer: McpServer) {
+        // Register MCP tools
+        mcpServer.tool(
+            "listFiles",
+            {
+                includePatterns: z.array(z.string()).optional(),
+                excludePatterns: z.array(z.string()).optional()
+            },
+            async ({ includePatterns, excludePatterns }) => {
+                const files = await this.handleListFiles({ includePatterns, excludePatterns });
+                return {
+                    content: [{
+                        type: "text",
+                        text: JSON.stringify(files, null, 2)
+                    }]
+                };
             }
-        },
-        {
-            name: "getFileContent",
-            description: getFileContentDescription,
-            inputSchema: {
-                type: "object",
-                properties: {
-                    path: {
-                        type: "string",
-                        description: "Path to the file. IT MUST BE AN ABSOLUTE PATH AND MATCH THE OUTPUT OF listFiles"
-                    }
-                },
-                required: ["path"]
-            }
-        },
-        {
-            name: "debug",
-            description: debugDescription,
-            inputSchema: {
-                type: "object",
-                properties: {
-                    steps: {
-                        type: "array",
-                        items: {
-                            type: "object",
-                            properties: {
-                                type: {
-                                    type: "string",
-                                    enum: ["setBreakpoint", "removeBreakpoint", "continue", "evaluate", "launch"],
-                                    description: ""
-                                },
-                                file: { type: "string" },
-                                line: { type: "number" },
-                                expression: { 
-                                    description: "An expression to be evaluated in the stack frame of the current breakpoint",
-                                    type: "string"
-                                 },
-                                condition: {
-                                    description: "If needed, a breakpoint condition may be specified to only stop on a breakpoint for some given condition.",
-                                    type: "string"
-                                },
-                            },
-                            required: ["type", "file"]
-                        }
-                    }
-                },
-                required: ["steps"]
-            }
-        }
-    ];
+        );
 
-    async start(serverPath?: string): Promise<void> {
-        if (this.server) {
+        mcpServer.tool(
+            "getFile",
+            { path: z.string() },
+            async ({ path }) => {
+                const content = await this.handleGetFile({ path });
+                return {
+                    content: [{
+                        type: "text",
+                        text: content
+                    }]
+                };
+            }
+        );
+
+        mcpServer.tool(
+            "debug",
+            { 
+                steps: z.array(z.object({
+                    type: z.enum(["setBreakpoint", "removeBreakpoint", "continue", "evaluate", "launch"]),
+                    file: z.string(),
+                    line: z.number().optional(),
+                    expression: z.string().optional(),
+                    condition: z.string().optional()
+                }))
+            },
+            async ({ steps }) => {
+                const results = await this.handleDebug({ steps });
+                return {
+                    content: [{
+                        type: "text",
+                        text: results.join('\n')
+                    }]
+                };
+            }
+        );
+    }
+
+    setMcpServer(server: McpServer) {
+        this.mcpServer = server;
+        this.setupMcpTools(server);
+    }
+
+    async start(): Promise<void> {
+        if (this.httpServer) {
             throw new Error('Server is already running');
         }
 
-        this.server = net.createServer((socket) => {
-            socket.on('data', (data) => this.handleCommand(socket, data));
+        if (!this.mcpServer) {
+            throw new Error('MCP Server not set');
+        }
+
+        this.httpServer = http.createServer(async (req, res) => {
+            // Handle CORS
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', '*');
+            
+            if (req.method === 'OPTIONS') {
+                res.writeHead(204).end();
+                return;
+            }
+
+            // Health check endpoint
+            if (req.method === 'GET' && req.url === '/ping') {
+                res.writeHead(200).end('pong');
+                return;
+            }
+
+            // SSE endpoint
+            if (req.method === 'GET' && req.url === '/sse') {
+                const transport = new SSEServerTransport('/messages', res);
+                this.activeTransports[transport.sessionId] = transport;
+
+                // Connect the transport to the MCP server
+                await this.mcpServer!.connect(transport);
+
+                this.outputChannel.appendLine(`Client connected: ${transport.sessionId}`);
+
+                res.on('close', async () => {
+                    if (transport.sessionId in this.activeTransports) {
+                        await this.mcpServer!.close();
+                        delete this.activeTransports[transport.sessionId];
+                        this.outputChannel.appendLine(`Client disconnected: ${transport.sessionId}`);
+                    }
+                });
+
+                return;
+            }
+
+            // Message endpoint
+            if (req.method === 'POST' && req.url?.startsWith('/messages')) {
+                const url = new URL(req.url, 'http://localhost');
+                const sessionId = url.searchParams.get('sessionId');
+
+                if (!sessionId) {
+                    res.writeHead(400).end('No sessionId');
+                    return;
+                }
+
+                const transport = this.activeTransports[sessionId];
+                if (!transport) {
+                    res.writeHead(404).end('Session not found');
+                    return;
+                }
+
+                await transport.handlePostMessage(req, res);
+                return;
+            }
+
+            res.writeHead(404).end();
         });
 
         return new Promise((resolve, reject) => {
-            this.server!.listen(this.port, () => {
-                vscode.window.showInformationMessage(`MCP Debug server started${serverPath ? `: ${serverPath}` : ""}`);
+            this.httpServer!.listen(this.port, () => {
+                this.outputChannel.appendLine(`Debug server started on port ${this.port}`);
                 resolve();
             });
 
-            this.server!.on('error', (err) => {
+            this.httpServer!.on('error', (err) => {
+                this.outputChannel.appendLine(`Server error: ${err.message}`);
                 reject(err);
             });
         });
     }
 
-    // Modify just the request handling part
-    private async handleCommand(socket: net.Socket, data: Buffer) {
-        try {
-            const request: ToolRequest = JSON.parse(data.toString());
-            let response: any;
-
-            if (request.type === 'listTools') {
-                response = { tools: this.tools };
-            } else if (request.type === 'callTool') {
-                if (request.tool === 'listFiles') {
-                    response = await this.handleListFiles(request.arguments);
-                } else if (request.tool === 'getFileContent') {
-                    response = await this.handleGetFile(request.arguments);
-                } else if (request.tool === 'debug') {
-                    response = await this.handleDebug(request.arguments);
-                } else {
-                    throw new Error(`Unknown tool: ${request.tool}`);
-                }
-            } else {
-                throw new Error(`Unknown request type: ${request.type}`);
-            }
-
-            socket.write(JSON.stringify({ success: true, data: response }));
-        } catch (error) {
-            socket.write(JSON.stringify({
-                success: false,
-                error: error instanceof Error ? error.message : 'Unknown error'
-            }));
+    public async handleListFiles(payload: { 
+        includePatterns?: string[], 
+        excludePatterns?: string[] 
+    }): Promise<string[]> {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) {
+            throw new Error('No workspace folders found');
         }
+
+        const includePatterns = payload.includePatterns || ['**/*'];
+        const excludePatterns = payload.excludePatterns || ['**/node_modules/**', '**/.git/**'];
+
+        const files: string[] = [];
+        for (const folder of workspaceFolders) {
+            const relativePattern = new vscode.RelativePattern(folder, `{${includePatterns.join(',')}}`);
+            const foundFiles = await vscode.workspace.findFiles(relativePattern, `{${excludePatterns.join(',')}}`);
+            files.push(...foundFiles.map(file => file.fsPath));
+        }
+
+        return files;
+    }
+
+    public async handleGetFile(payload: { path: string }): Promise<string> {
+        const doc = await vscode.workspace.openTextDocument(payload.path);
+        const lines = doc.getText().split('\n');
+        return lines.map((line, i) => `${i + 1}: ${line}`).join('\n');
     }
 
     private async handleLaunch(payload: { 
@@ -166,7 +229,7 @@ export class DebugServer {
         args?: string[]
     }): Promise<string> {
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (!workspaceFolder) {
+        if (!workspaceFolder) { 
             throw new Error('No workspace folder found');
         }
 
@@ -253,42 +316,14 @@ export class DebugServer {
         });
     }
 
-    private async handleListFiles(payload: { 
-        includePatterns?: string[], 
-        excludePatterns?: string[] 
-    }): Promise<string[]> {
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders) {
-            throw new Error('No workspace folders found');
-        }
-
-        const includePatterns = payload.includePatterns || ['**/*'];
-        const excludePatterns = payload.excludePatterns || ['**/node_modules/**', '**/.git/**'];
-
-        const files: string[] = [];
-        for (const folder of workspaceFolders) {
-            const relativePattern = new vscode.RelativePattern(folder, `{${includePatterns.join(',')}}`);
-            const foundFiles = await vscode.workspace.findFiles(relativePattern, `{${excludePatterns.join(',')}}`);
-            files.push(...foundFiles.map(file => file.fsPath));
-        }
-
-        return files;
-    }
-
-    private async handleGetFile(payload: { path: string }): Promise<string> {
-        const doc = await vscode.workspace.openTextDocument(payload.path);
-        const lines = doc.getText().split('\n');
-        return lines.map((line, i) => `${i + 1}: ${line}`).join('\n');
-    }
-
-    private async handleDebug(payload: { steps: DebugStep[] }): Promise<string[]> {
+    public async handleDebug(payload: { steps: DebugStep[] }): Promise<string[]> {
         const results: string[] = [];
 
         for (const step of payload.steps) {
             switch (step.type) {
                 case 'setBreakpoint': {
-                    if (!step.line) throw new Error('Line number required');
-                    if (!step.file) throw new Error('File path required');
+                    if (!step.line) {throw new Error('Line number required');}
+                    if (!step.file) {throw new Error('File path required');}
 
                     // Open the file and make it active
                     const document = await vscode.workspace.openTextDocument(step.file);
@@ -308,7 +343,7 @@ export class DebugServer {
                 }
 
                 case 'removeBreakpoint': {
-                    if (!step.line) throw new Error('Line number required');
+                    if (!step.line) {throw new Error('Line number required');}
                     const bps = vscode.debug.breakpoints.filter(bp => {
                         if (bp instanceof vscode.SourceBreakpoint) {
                             return bp.location.range.start.line === step.line! - 1;
@@ -372,13 +407,20 @@ export class DebugServer {
 
     stop(): Promise<void> {
         return new Promise((resolve) => {
-            if (!this.server) {
+            if (!this.httpServer) {
                 resolve();
                 return;
             }
 
-            this.server.close(() => {
-                this.server = null;
+            // Close all active transports
+            Object.values(this.activeTransports).forEach(transport => {
+                transport.close();
+            });
+            this.activeTransports = {};
+
+            this.httpServer.close(() => {
+                this.httpServer = null;
+                this.outputChannel.appendLine('Debug server stopped');
                 resolve();
             });
         });

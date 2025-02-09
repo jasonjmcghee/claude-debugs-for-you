@@ -6,14 +6,22 @@
 		{
 			"type": "npm",
 			"script": "watch",
-			"problemMatcher": "$tsc-watch",
-			"isBackground": true,
-			"presentation": {
-				"reveal": "never"
-			},
 			"group": {
 				"kind": "build",
 				"isDefault": true
+			},
+			"problemMatcher": ["$vite"],
+			"isBackground": true,
+			"presentation": {
+				"reveal": "never"
+			}
+		},
+		{
+			"type": "npm",
+			"script": "compile",
+			"problemMatcher": ["$vite"],
+			"presentation": {
+				"reveal": "silent"
 			}
 		}
 	]
