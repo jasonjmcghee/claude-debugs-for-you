@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as http from 'http';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { z } from 'zod';
 
 export interface DebugCommand {
     command: 'listFiles' | 'getFileContent' | 'debug';
@@ -45,10 +46,71 @@ export class DebugServer {
         this.mcpServer = mcpServer || null;
         this.outputChannel = vscode.window.createOutputChannel("Debug Server");
         this.outputChannel.show();
+        
+        if (mcpServer) {
+            this.setupMcpTools(mcpServer);
+        }
+    }
+
+    private setupMcpTools(mcpServer: McpServer) {
+        // Register MCP tools
+        mcpServer.tool(
+            "listFiles",
+            {
+                includePatterns: z.array(z.string()).optional(),
+                excludePatterns: z.array(z.string()).optional()
+            },
+            async ({ includePatterns, excludePatterns }) => {
+                const files = await this.handleListFiles({ includePatterns, excludePatterns });
+                return {
+                    content: [{
+                        type: "text",
+                        text: JSON.stringify(files, null, 2)
+                    }]
+                };
+            }
+        );
+
+        mcpServer.tool(
+            "getFile",
+            { path: z.string() },
+            async ({ path }) => {
+                const content = await this.handleGetFile({ path });
+                return {
+                    content: [{
+                        type: "text",
+                        text: content
+                    }]
+                };
+            }
+        );
+
+        mcpServer.tool(
+            "debug",
+            { 
+                steps: z.array(z.object({
+                    type: z.enum(["setBreakpoint", "removeBreakpoint", "continue", "evaluate", "launch"]),
+                    file: z.string(),
+                    line: z.number().optional(),
+                    expression: z.string().optional(),
+                    condition: z.string().optional()
+                }))
+            },
+            async ({ steps }) => {
+                const results = await this.handleDebug({ steps });
+                return {
+                    content: [{
+                        type: "text",
+                        text: results.join('\n')
+                    }]
+                };
+            }
+        );
     }
 
     setMcpServer(server: McpServer) {
         this.mcpServer = server;
+        this.setupMcpTools(server);
     }
 
     async start(): Promise<void> {
@@ -260,8 +322,8 @@ export class DebugServer {
         for (const step of payload.steps) {
             switch (step.type) {
                 case 'setBreakpoint': {
-                    if (!step.line) throw new Error('Line number required');
-                    if (!step.file) throw new Error('File path required');
+                    if (!step.line) {throw new Error('Line number required');}
+                    if (!step.file) {throw new Error('File path required');}
 
                     // Open the file and make it active
                     const document = await vscode.workspace.openTextDocument(step.file);
@@ -281,7 +343,7 @@ export class DebugServer {
                 }
 
                 case 'removeBreakpoint': {
-                    if (!step.line) throw new Error('Line number required');
+                    if (!step.line) {throw new Error('Line number required');}
                     const bps = vscode.debug.breakpoints.filter(bp => {
                         if (bp instanceof vscode.SourceBreakpoint) {
                             return bp.location.range.start.line === step.line! - 1;

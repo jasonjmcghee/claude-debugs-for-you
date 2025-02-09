@@ -1,7 +1,7 @@
 # <img src="./images/claude-debugs-for-you.png" width="64" height="64" alt="description" align="center"> Claude Debugs For You
 
 
-[![Badge](https://img.shields.io/badge/Visual%20Studio%20Marketplace-v0.0.2-blue.svg)](https://marketplace.visualstudio.com/items?itemName=JasonMcGhee.claude-debugs-for-you)
+[![Badge](https://img.shields.io/badge/Visual%20Studio%20Marketplace-0.0.3-blue.svg)](https://marketplace.visualstudio.com/items?itemName=JasonMcGhee.claude-debugs-for-you)
 
 ### Enable Claude (or any other LLM) to interactively debug your code
 
@@ -17,24 +17,38 @@ It's language-agnostic, assuming debugger console support and valid launch.json 
 - Install the extension
   - If using `.vsix` directly, go to the three dots in "Extensions" in VS Code and choose "Install from VSIX..."
 - Open a project containing a `.vscode/launch.json` with the first configuration setup to debug a specific file with `${file}`.
-- Execute "Start MCP Debug Server" (A popup will show that it started: copy the path to `mcp-debug.js`)
+- Execute "Start MCP Debug Server" (A popup will show that it started: copy the SSE URL)
 
 <img width="384" alt="image" src="https://github.com/user-attachments/assets/5de31d62-32e5-4eac-83f1-cd6bacc2ab7d" />
 
-- Paste the following (BUT UPDATE THE PATH!) in your `claude_desktop_config.json` or edit accordingly if you use other MCP servers
+### Configure MCP Server
+
+You can configure the MCP server in either Claude Desktop or Cursor:
+
+#### Claude Desktop
+Paste the following (updating the port if needed) in your `claude_desktop_config.json`:
+
+Config file location:
+- MacOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%/Claude/claude_desktop_config.json`
 
 ```
 {
   "mcpServers": {
     "debug": {
-      "command": "node",
-      "args": [
-        "/path/to/mcp-debug.js"
-      ]
+      "sse": "http://localhost:4711/sse"
     }
   }
 }
 ```
+
+#### Cursor
+1. Open Cursor Settings (Ctrl + Shift + J)
+2. Go to Features -> MCP Servers
+3. Add a new server with:
+   - Name: `debug`
+   - Type: `sse`
+   - URL: `http://localhost:4711/sse`
 
 - Start Claude desktop (or other MCP client)
 - You're ready to debug
@@ -52,21 +66,56 @@ In this example, I made it intentionally very cautious (make no assumptions etc 
 
 https://github.com/user-attachments/assets/ef6085f7-11a2-4eea-bb60-b5a54873b5d5
 
-## Developing
+## Development
 
-- Cline / Open this repo with VS Code
-- Run `npm run install` and `npm run compile`
-- Hit "run" which will open a new VSCode
-    - Run the command in VS Code: "Start MCP Debug Server"
-- Otherwise same as "Getting Started applies"
-- To rebuild, `npm run compile`
+1. Install dependencies
+```bash
+npm install
+```
+
+2. Development in VS Code/Cursor
+   - Open the project in VS Code/Cursor
+   - Press `F5` to start debugging (this will automatically):
+     - Start the TypeScript watch compilation
+     - Launch the debugger
+     - Connect to the debug server
+
+Alternatively, you can manually:
+- Start watching for changes: `npm run watch`
+- Start the debug server: `npm run start`
 
 ## Package
 
+You can build a VSIX package for installation in VS Code:
+
 ```bash
-vsce package
+# Install dependencies
+npm install
+
+# Build the extension
+npm run compile
+
+# Create VSIX package
+npm run package
 ```
 
+This will create a file named `claude-debugs-for-you-0.0.4.vsix` in your project directory.
+
+### Installing the VSIX
+
+There are two ways to install the VSIX package:
+
+1. Through VS Code UI:
+   - Open VS Code
+   - Go to the Extensions view (Ctrl+Shift+X)
+   - Click the "..." menu in the top right
+   - Select "Install from VSIX..."
+   - Choose the `claude-debugs-for-you-0.0.4.vsix` file
+
+2. Through command line:
+   ```bash
+   code --install-extension claude-debugs-for-you-0.0.4.vsix
+   ```
 
 ## Run an Example
 

@@ -2,7 +2,7 @@
   "name": "claude-debugs-for-you",
   "displayName": "Claude Debugs for You",
   "description": "Enable an MCP Client, such as Claude Desktop to directly debug code with breakpoints",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "repository": "https://github.com/jasonjmcghee/claude-debugs-for-you",
   "author": "Jason McGhee",
   "publisher": "JasonMcGhee",
@@ -45,7 +45,9 @@
     "watch": "vite build --watch",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -55,6 +57,7 @@
     "@typescript-eslint/parser": "^8.17.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^latest",
     "eslint": "^9.16.0",
     "typescript": "^5.7.2",
     "vite": "^5.4.14"

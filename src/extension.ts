@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod';
-import { DebugServer, DebugStep } from './debug-server.js';
+import { DebugServer } from './debug-server.js';
 
 // Keep track of server instances for cleanup
 let mcpServer: McpServer | undefined;
@@ -44,61 +43,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 version: "1.0.0"
             });
 
-            // Set up MCP server handlers
-            mcpServer.tool(
-                "listFiles",
-                {
-                    includePatterns: z.array(z.string()).optional(),
-                    excludePatterns: z.array(z.string()).optional()
-                },
-                async ({ includePatterns, excludePatterns }) => {
-                    const files = await debugServer!.handleListFiles({ includePatterns, excludePatterns });
-                    return {
-                        content: [{
-                            type: "text",
-                            text: JSON.stringify(files, null, 2)
-                        }]
-                    };
-                }
-            );
-
-            mcpServer.tool(
-                "getFile",
-                { path: z.string() },
-                async ({ path }) => {
-                    const content = await debugServer!.handleGetFile({ path });
-                    return {
-                        content: [{
-                            type: "text",
-                            text: content
-                        }]
-                    };
-                }
-            );
-
-            mcpServer.tool(
-                "debug",
-                { 
-                    steps: z.array(z.object({
-                        type: z.enum(["setBreakpoint", "removeBreakpoint", "continue", "evaluate", "launch"]),
-                        file: z.string(),
-                        line: z.number().optional(),
-                        expression: z.string().optional(),
-                        condition: z.string().optional()
-                    }))
-                },
-                async ({ steps }) => {
-                    const results = await debugServer!.handleDebug({ steps });
-                    return {
-                        content: [{
-                            type: "text",
-                            text: results.join('\n')
-                        }]
-                    };
-                }
-            );
-
-            // Create and start debug server with MCP server
+            // Create and start debug server with MCP server with SSE 
             debugServer = new DebugServer(port, mcpServer);
             await debugServer.start();
             
