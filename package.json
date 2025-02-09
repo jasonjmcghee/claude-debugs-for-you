@@ -13,13 +13,19 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "vscode-mcp-debug.restart",
         "title": "Start MCP Debug Server"
+      },
+      {
+        "command": "vscode-mcp-debug.copyAddress",
+        "title": "Copy MCP SSE Address"
       }
     ],
     "configuration": {
@@ -28,28 +34,34 @@
         "mcpDebug.port": {
           "type": "number",
           "default": 4711,
-          "description": "Port number for the debug server"
+          "description": "Port number for the unified debug server"
         }
       }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "cd mcp && npm run build && cd - && tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "vite build",
+    "watch": "vite build --watch",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
+    "@types/node": "^20.17.17",
     "@types/vscode": "^1.96.0",
     "@typescript-eslint/eslint-plugin": "^8.17.0",
     "@typescript-eslint/parser": "^8.17.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.16.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^5.4.14"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.4.1",
+    "@types/express": "^5.0.0",
+    "express": "^4.21.2"
   }
 }
