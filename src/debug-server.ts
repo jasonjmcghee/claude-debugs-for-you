@@ -503,8 +503,19 @@ export class DebugServer extends EventEmitter implements DebugServerEvents {
                         });
 
                         results.push(`Evaluated "${step.expression}": ${response.result}`);
-                    } catch (err) {
-                        vscode.window.showErrorMessage(`Failed to execute: ${err}`);
+                    } catch (err: any) {
+                        let errorMessage = '';
+                        let stackTrace = '';
+
+                        if (err instanceof Error) {
+                            errorMessage = err.message;
+                            if (err.stack) {
+                                stackTrace = `\nStack: ${err.stack}`;
+                            }
+                        } else {
+                            errorMessage = String(err);
+                        }
+                        results.push(`ERROR: Evaluation failed for "${step.expression}": ${errorMessage}${stackTrace}`);
                     }
                     break;
                 }
