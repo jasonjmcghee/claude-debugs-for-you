@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/jasonjmcghee-claude-debugs-for-you-badge.png)](https://mseep.ai/app/jasonjmcghee-claude-debugs-for-you)
+
 # <img src="./images/claude-debugs-for-you.png" width="64" height="64" alt="description" align="center"> Claude Debugs For You
 
 [![Badge](https://img.shields.io/badge/Visual%20Studio%20Marketplace-0.1.1-blue.svg)](https://marketplace.visualstudio.com/items?itemName=JasonMcGhee.claude-debugs-for-you)
