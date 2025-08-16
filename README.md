@@ -2,6 +2,8 @@
 
 [![Badge](https://img.shields.io/badge/Visual%20Studio%20Marketplace-0.1.1-blue.svg)](https://marketplace.visualstudio.com/items?itemName=JasonMcGhee.claude-debugs-for-you)
 
+[![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/jasonjmcghee/claude-debugs-for-you)](https://archestra.ai/mcp-catalog/jasonjmcghee__claude-debugs-for-you)
+
 _aka Vibe Debugging_
 
 ### Enable Claude (or any other LLM) to interactively debug your code
