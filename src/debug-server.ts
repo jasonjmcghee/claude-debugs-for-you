@@ -191,11 +191,9 @@ export class DebugServer extends EventEmitter implements DebugServerEvents {
         }
 
         this.server = http.createServer(async (req, res) => {
-            // Handle CORS
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', '*');
-
+            // Reject cross-origin browser requests (CORS)
+            // All legitimate MCP clients connect via Node.js, not browsers,
+            // so no Access-Control-Allow-Origin header is needed.
             if (req.method === 'OPTIONS') {
                 res.writeHead(204).end();
                 return;
@@ -265,7 +263,7 @@ export class DebugServer extends EventEmitter implements DebugServerEvents {
         });
 
         return new Promise((resolve, reject) => {
-            this.server!.listen(this.port, () => {
+            this.server!.listen(this.port, '127.0.0.1', () => {
                 this._isRunning = true;
                 this.emit('started');
                 resolve();
