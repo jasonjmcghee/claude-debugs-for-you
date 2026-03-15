@@ -324,8 +324,27 @@ export class DebugServer extends EventEmitter implements DebugServerEvents {
             });
         }
 
-        // Check if we're already debugging
+        // Stop any existing debug session before launching a new one.
+        // A stale/zombie session (e.g. from a stuck REPL) would otherwise be
+        // reused, causing "Unable to find thread" errors on every subsequent
+        // launch attempt.
         let session = vscode.debug.activeDebugSession;
+        if (session) {
+            let isAlive = false;
+            try {
+                const threads = await session.customRequest('threads');
+                isAlive = threads?.threads?.length > 0;
+            } catch {
+                isAlive = false;
+            }
+            if (!isAlive) {
+                await vscode.debug.stopDebugging(session);
+                // Give VS Code a moment to tear down
+                await new Promise(resolve => setTimeout(resolve, 500));
+                session = undefined;
+            }
+        }
+
         if (!session) {
             // Start debugging using the configured launch configuration
             await vscode.debug.startDebugging(workspaceFolder, config);
