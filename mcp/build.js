@@ -14,7 +14,7 @@ async function build() {
     bundle: true,
     platform: 'node',
     target: 'node20',
-    outfile: 'build/index.js',
+    outfile: 'build/index.cjs',
     minify: true,
     sourcemap: true,
     external: [],
@@ -27,7 +27,7 @@ async function build() {
   });
 
   // Make the output file executable
-  await chmod('build/index.js', 0o755);
+  await chmod('build/index.cjs', 0o755);
 }
 
 build().catch((err) => {
