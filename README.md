@@ -12,6 +12,10 @@ That means it should also work with other models / clients etc. but I only demon
 
 It's language-agnostic, assuming debugger console support and valid launch.json for debugging in VSCode.
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/jasonjmcghee-claude-debugs-for-you).
+
 ## Getting Started
 
 1. Download the extension from [releases](https://github.com/jasonjmcghee/claude-debugs-for-you/releases/) or [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=JasonMcGhee.claude-debugs-for-you)
