@@ -16,42 +16,15 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/src/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "claude-debugs-for-you.showCommands",
-        "title": "Claude Debugs For You: Show All Commands"
-      },
-      {
-        "command": "vscode-mcp-debug.restart",
-        "title": "Claude Debugs For You: (Re)Start Server"
-      },
-      {
-        "command": "vscode-mcp-debug.stop",
-        "title": "Claude Debugs For You: Stop Server"
-      },
-      {
-        "command": "vscode-mcp-debug.setPort",
-        "title": "Claude Debugs For You: Set Port"
-      },
-      {
-        "command": "vscode-mcp-debug.toggleAutostart",
-        "title": "Claude Debugs For You: Toggle Autostart"
+        "command": "mcpDebug.toggleServer",
+        "title": "Toggle Server",
+        "category": "Claude Debugs For You"
       }
     ],
-    "menus": {
-      "commandPalette": [
-        {
-          "command": "vscode-mcp-debug.setPort",
-          "when": "false"
-        },
-        {
-          "command": "vscode-mcp-debug.toggleAutostart",
-          "when": "false"
-        }
-      ]
-    },
     "configuration": {
       "title": "Claude Debugs For You",
       "properties": {
@@ -59,32 +32,28 @@
           "type": "number",
           "default": 4711,
           "description": "Port number for the debug server"
-        },
-        "mcpDebug.showServerPathOnStartup": {
-          "type": "boolean",
-          "default": true,
-          "description": "Whether to show the server path on startup"
-        },
-        "mcpDebug.autostart": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically start 'Claude Debugs For You' when opening VS Code"
         }
       }
     }
   },
+  "bin": {
+    "mcp-debug": "./out/mcp/index.js"
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "cd mcp && npm run build && cd - && tsc -p ./",
+    "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.4.1"
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "express": "^5.2.1"
   },
   "devDependencies": {
+    "@vscode/debugprotocol": "^1.68.0",
+    "@types/express": "^5.0.6",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.96.0",
@@ -92,6 +61,7 @@
     "@typescript-eslint/parser": "^8.17.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "esbuild": "^0.27.4",
     "eslint": "^9.16.0",
     "typescript": "^5.7.2"
   }
